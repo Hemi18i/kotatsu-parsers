@@ -11,7 +11,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Broken // Redirect to @VORTEXSCANS
-@MangaSourceParser("VEXMANGA", "VexManga", "ar")
+@MangaSourceParser("VEXMANGA", "VexManga", "en")
 internal class VexManga(context: MangaLoaderContext) :
 	MangaReaderParser(context, MangaParserSource.VEXMANGA, "vortexscans.org", pageSize = 10, searchPageSize = 10) {
 	override val selectMangaList = ".listarchives .latest-recom"
