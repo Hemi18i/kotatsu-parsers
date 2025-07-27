@@ -2,13 +2,12 @@ package org.koitharu.kotatsu.parsers.site.madara.ar
 
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.model.ContentType
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
-import java.util.*
 
-@MangaSourceParser("MANHATIC", "Manhatic", "ar", ContentType.HENTAI)
-internal class Manhatic(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.MANHATIC, "mangatuk.com") {
-	override val sourceLocale: Locale = Locale.ENGLISH
+@MangaSourceParser("MANGATUK", "MangaTuk", "ar")
+internal class MangaTuk(context: MangaLoaderContext) :
+	MadaraParser(context, MangaParserSource.MANGATUK, "mangatuk.com") {
+	
+	override val datePattern = "d MMMM، yyyy"
 }
