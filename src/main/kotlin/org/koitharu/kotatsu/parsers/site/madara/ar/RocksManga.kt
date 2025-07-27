@@ -1,135 +1,285 @@
-package org.koitharu.kotatsu.parsers.site.madara.ar
+package org.koitharu.kotatsu.parsers.site.ar
 
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
-import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
+import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-@MangaSourceParser("ROCKSMANGA", "RocksManga", "ar")
-internal class RocksManga(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.ROCKSMANGA, "rockscans.org") {
+@MangaSourceParser("ROCKSCANS", "RockScans", "ar")
+internal class RockScans(context: MangaLoaderContext) :
+	LegacyPagedMangaParser(context, MangaParserSource.ROCKSCANS, 12) {
 
-	override val listUrl = "manga/"
-	override val tagPrefix = "manga-genre/"
+	override val availableSortOrders: Set<SortOrder> = EnumSet.of(
+		SortOrder.UPDATED,
+		SortOrder.POPULARITY,
+		SortOrder.ALPHABETICAL
+	)
+	
+	override val configKeyDomain = ConfigKey.Domain("rockscans.org")
+	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
-	override suspend fun getDetails(manga: Manga): Manga {
-		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
+	override val filterCapabilities: MangaListFilterCapabilities
+		get() = MangaListFilterCapabilities(
+			isSearchSupported = true,
+			isGenreSupported = true,
+		)
+
+	override suspend fun getFilterOptions() = MangaListFilterOptions(
+		availableTags = fetchAvailableTags(),
+		availableStates = EnumSet.of(
+			MangaState.ONGOING,
+			MangaState.FINISHED,
+			MangaState.PAUSED
+		),
+	)
+
+	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
+		super.onCreateConfig(keys)
+		keys.add(userAgentKey)
+	}
+
+	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
+		val url = buildString {
+			append("https://")
+			append(domain)
+			
+			when {
+				!filter.query.isNullOrEmpty() -> {
+					append("/?s=")
+					append(filter.query.urlEncoded())
+					if (page > 1) {
+						append("&paged=")
+						append(page)
+					}
+				}
+				filter.tags.isNotEmpty() -> {
+					val tag = filter.tags.first()
+					append("/genre/")
+					append(tag.key)
+					append("/")
+					if (page > 1) {
+						append("page/")
+						append(page)
+						append("/")
+					}
+				}
+				else -> {
+					when (order) {
+						SortOrder.POPULARITY -> {
+							append("/most-popular/")
+						}
+						SortOrder.ALPHABETICAL -> {
+							append("/manga-list/")
+						}
+						else -> {
+							append("/")
+						}
+					}
+					if (page > 1) {
+						append("page/")
+						append(page)
+						append("/")
+					}
+				}
+			}
+		}
+
+		val doc = webClient.httpGet(url).parseHtml()
 		
-		val description = doc.selectFirst("div.description, .summary__content, .entry-content")?.text()
+		return doc.select("article, .manga-item, .post").mapNotNull { element ->
+			try {
+				val linkElement = element.selectFirst("a[href*=manga]") ?: return@mapNotNull null
+				val href = linkElement.attrAsAbsoluteUrl("href")
+				
+				// استخراج العنوان
+				val title = linkElement.attr("title").ifEmpty {
+					element.selectFirst("h2, h3, .title")?.text() ?: 
+					linkElement.text().ifEmpty { "Unknown Title" }
+				}
+				
+				// استخراج صورة الغلاف
+				val imgElement = element.selectFirst("img")
+				val coverUrl = imgElement?.src()?.toAbsoluteUrl(domain) ?: ""
+				
+				// استخراج الحالة من النص
+				val statusText = element.text()
+				val state = when {
+					statusText.contains("مستمر") -> MangaState.ONGOING
+					statusText.contains("مكتمل") -> MangaState.FINISHED
+					statusText.contains("متوقف") -> MangaState.PAUSED
+					else -> null
+				}
+
+				Manga(
+					id = generateUid(href),
+					title = title,
+					altTitles = emptySet(),
+					url = href,
+					publicUrl = href,
+					rating = RATING_UNKNOWN,
+					contentRating = ContentRating.SAFE,
+					coverUrl = coverUrl,
+					tags = emptySet(),
+					state = state,
+					authors = emptySet(),
+					source = source,
+				)
+			} catch (e: Exception) {
+				null
+			}
+		}
+	}
+
+	private suspend fun fetchAvailableTags(): Set<MangaTag> {
+		return try {
+			val doc = webClient.httpGet("https://$domain/manga-genre/").parseHtml()
+			doc.select(".genre-list a, .wp-block-tag-cloud a").mapToSet { tagElement ->
+				MangaTag(
+					key = tagElement.attr("href").substringAfterLast("/").removeSuffix("/"),
+					title = tagElement.text(),
+					source = source,
+				)
+			}
+		} catch (e: Exception) {
+			// تاجز افتراضية في حالة الفشل
+			setOf(
+				MangaTag("action", "أكشن", source),
+				MangaTag("adventure", "مغامرة", source),
+				MangaTag("comedy", "كوميدي", source),
+				MangaTag("drama", "دراما", source),
+				MangaTag("fantasy", "خيال", source),
+				MangaTag("romance", "رومانسي", source),
+				MangaTag("horror", "رعب", source),
+				MangaTag("mystery", "غموض", source),
+				MangaTag("school", "مدرسة", source),
+				MangaTag("shounen", "شونين", source),
+			)
+		}
+	}
+
+	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
+		val chaptersDeferred = async { loadChapters(manga.url) }
+		val doc = webClient.httpGet(manga.url).parseHtml()
 		
-		// محاولة العثور على قائمة الفصول في نفس الصفحة أو صفحة منفصلة
-		val chapters = loadChapters(manga.url, doc)
+		// استخراج الوصف
+		val description = doc.selectFirst(".summary, .entry-content, .description")?.html() ?: ""
 		
-		return manga.copy(
+		// استخراج التاجز
+		val tags = doc.select(".genres a, .genre a, .wp-block-tag-cloud a").mapToSet { tagElement ->
+			MangaTag(
+				key = tagElement.attr("href").substringAfterLast("/").removeSuffix("/"),
+				title = tagElement.text(),
+				source = source,
+			)
+		}
+		
+		// استخراج الحالة
+		val statusElement = doc.selectFirst(".status, .manga-status")
+		val state = when (statusElement?.text()?.lowercase()) {
+			"ongoing", "مستمر" -> MangaState.ONGOING
+			"completed", "مكتمل" -> MangaState.FINISHED
+			"paused", "متوقف" -> MangaState.PAUSED
+			else -> null
+		}
+		
+		// استخراج المؤلفين
+		val authors = doc.select(".author a, .manga-author a").mapToSet { authorElement ->
+			MangaAuthor(
+				name = authorElement.text(),
+				type = MangaAuthor.Type.UNKNOWN,
+			)
+		}
+
+		manga.copy(
 			description = description,
-			chapters = chapters,
+			tags = tags,
+			state = state,
+			authors = authors,
+			chapters = chaptersDeferred.await(),
 		)
 	}
 
-	override suspend fun loadChapters(mangaUrl: String, document: Document): List<MangaChapter> {
-		val chapters = mutableListOf<MangaChapter>()
+	private val dateFormat = SimpleDateFormat("yyyy-MM-dd", sourceLocale)
+
+	private suspend fun loadChapters(mangaUrl: String): List<MangaChapter> {
+		val doc = webClient.httpGet(mangaUrl).parseHtml()
 		
-		// جرب البحث عن الفصول في الصفحة الحالية
-		var chapterElements = document.select("li.wp-manga-chapter")
-		if (chapterElements.isEmpty()) {
-			chapterElements = document.select(".chapter-item")
-		}
-		if (chapterElements.isEmpty()) {
-			chapterElements = document.select("ul.main li")
-		}
-		if (chapterElements.isEmpty()) {
-			chapterElements = document.select("a[href*='chapter'], a[href*='الفصل']")
+		// البحث عن قائمة الفصول
+		val chapterElements = doc.select(
+			".chapter-list li a, .wp-manga-chapter a, .version-chap a, .chapter a"
+		).ifEmpty {
+			doc.select("a[href*=chapter]")
 		}
 		
-		// إذا لم نجد فصول، جرب البحث في الصفحة الرئيسية للمانجا
-		if (chapterElements.isEmpty()) {
-			val mangaDoc = if (document.location().contains(mangaUrl)) {
-				document
-			} else {
-				webClient.httpGet(mangaUrl.toAbsoluteUrl(domain)).parseHtml()
-			}
+		return chapterElements.mapIndexed { index, element ->
+			val href = element.attrAsAbsoluteUrl("href")
+			val title = element.text().ifEmpty { "الفصل ${index + 1}" }
 			
-			chapterElements = mangaDoc.select("a[href*='/chapter/'], a[href*='/الفصل/']")
-			if (chapterElements.isEmpty()) {
-				val filteredElements = mangaDoc.select("a").filter { 
-					it.attr("href").contains("chapter", ignoreCase = true) ||
-					it.text().contains("فصل", ignoreCase = true) ||
-					it.text().contains("chapter", ignoreCase = true)
-				}
-				chapterElements = org.jsoup.select.Elements(filteredElements)
-			}
-		}
+			// محاولة استخراج رقم الفصل من النص أو الرابط
+			val chapterNumber = extractChapterNumber(title, href, index)
+			
+			// محاولة استخراج تاريخ الرفع
+			val dateElement = element.parent()?.selectFirst(".chapter-date, .date")
+			val uploadDate = dateElement?.text()?.let { dateText ->
+				dateFormat.tryParse(dateText) ?: 0
+			} ?: 0
+
+			MangaChapter(
+				id = generateUid(href),
+				url = href,
+				title = title,
+				number = chapterNumber,
+				volume = 0,
+				branch = null,
+				uploadDate = uploadDate,
+				scanlator = null,
+				source = source,
+			)
+		}.reversed() // عكس الترتيب للحصول على الفصول من الأقدم للأحدث
+	}
+
+	private fun extractChapterNumber(title: String, url: String, fallbackIndex: Int): Float {
+		// محاولة استخراج الرقم من العنوان
+		val titleRegex = Regex("""(?:chapter|ch|فصل|الفصل)\s*(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+		titleRegex.find(title)?.groupValues?.get(1)?.toFloatOrNull()?.let { return it }
 		
-		chapterElements.forEachIndexed { index, element ->
-			try {
-				val href = if (element.tagName() == "a") {
-					element.attrAsRelativeUrlOrNull("href")
-				} else {
-					element.selectFirst("a")?.attrAsRelativeUrlOrNull("href")
-				} ?: return@forEachIndexed
-				
-				val title = if (element.tagName() == "a") {
-					element.text()
-				} else {
-					element.selectFirst("a")?.text()
-				} ?: "Chapter ${index + 1}"
-				
-				chapters.add(
-					MangaChapter(
-						id = generateUid(href),
-						url = href,
-						title = title.trim(),
-						number = (index + 1).toFloat(),
-						volume = 0,
-						branch = null,
-						uploadDate = 0L,
-						scanlator = null,
-						source = source,
-					)
-				)
-			} catch (e: Exception) {
-				// تجاهل الفصول التي لا يمكن معالجتها
-			}
-		}
+		// محاولة استخراج من الرابط
+		val urlRegex = Regex("""chapter-?(\d+(?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+		urlRegex.find(url)?.groupValues?.get(1)?.toFloatOrNull()?.let { return it }
 		
-		return chapters.reversed() // أحدث فصل أولاً
+		// العودة للفهرس كرقم افتراضي
+		return (fallbackIndex + 1).toFloat()
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-		val fullUrl = chapter.url.toAbsoluteUrl(domain)
-		val doc = webClient.httpGet(fullUrl).parseHtml()
+		val doc = webClient.httpGet(chapter.url).parseHtml()
 		
-		// جرب عدة selectors للصور
-		var images = doc.select("div.reading-content img")
-		if (images.isEmpty()) {
-			images = doc.select(".read-container img")
-		}
-		if (images.isEmpty()) {
-			images = doc.select("img.wp-manga-page")
-		}
-		if (images.isEmpty()) {
-			images = doc.select(".entry-content img")
-		}
-		if (images.isEmpty()) {
-			images = doc.select("img[src*='wp-content']")
+		// البحث عن صور الصفحات بطرق مختلفة
+		val imageElements = doc.select(
+			".page-image img, .wp-manga-chapter-img img, .reading-content img, .chapter-content img"
+		).ifEmpty {
+			doc.select("img[src*=chapter], img[src*=page]")
+		}.ifEmpty {
+			doc.select(".entry-content img")
 		}
 		
-		return images.mapNotNull { img ->
-			val url = img.src()?.toAbsoluteUrl(domain) ?: return@mapNotNull null
+		return imageElements.mapNotNull { img ->
+			val imageUrl = img.src()?.toAbsoluteUrl(domain)
+			if (imageUrl.isNullOrEmpty()) return@mapNotNull null
 			
 			MangaPage(
-				id = generateUid(url),
-				url = url,
+				id = generateUid(imageUrl),
+				url = imageUrl,
 				preview = null,
 				source = source,
 			)
 		}
 	}
-
 }
