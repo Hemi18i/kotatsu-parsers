@@ -6,7 +6,7 @@ import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
 import org.koitharu.kotatsu.parsers.model.MangaParserSource
 import org.koitharu.kotatsu.parsers.site.mangareader.MangaReaderParser
 
-@MangaSourceParser("FLARES", "Fl-Ares", "ar")
+@MangaSourceParser("FLARES", "Fl-Ares", "en")
 internal class FlAres(context: MangaLoaderContext) :
 	MangaReaderParser(context, MangaParserSource.FLARES, "fl-ares.com", pageSize = 20, searchPageSize = 10) {
 	override val listUrl = "/series"
