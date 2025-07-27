@@ -10,4 +10,4 @@ import org.koitharu.kotatsu.parsers.site.nepnep.NepnepParser
 @Broken
 @MangaSourceParser("MANGA4LIFE", "Manga4Life", "en")
 internal class Manga4Life(context: MangaLoaderContext) :
-	NepnepParser(context, MangaParserSource.MANGA4LIFE, "manga4life.com")
+	NepnepParser(context, MangaParserSource.MANGA4LIFE, "weebcentral.com")
