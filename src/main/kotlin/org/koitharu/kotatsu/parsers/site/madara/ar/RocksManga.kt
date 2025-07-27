@@ -18,7 +18,7 @@ internal class RocksManga(context: MangaLoaderContext) :
 	
 	// إعدادات أساسية للموقع
 	override val datePattern = "d MMMM yyyy"
-	override val listUrl = "manga/"
+	override val listUrl = ""
 	override val tagPrefix = "manga-genre/"
 	
 	// selectors محدثة بناءً على الكود القديم والموقع الحالي
