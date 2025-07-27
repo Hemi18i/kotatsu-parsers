@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.parsers.site.madara.ar
 
 import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
@@ -10,7 +9,6 @@ import org.koitharu.kotatsu.parsers.network.UserAgents
 import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
-import java.util.*
 
 @MangaSourceParser("ROCKSMANGA", "RocksManga", "ar")
 internal class RocksManga(context: MangaLoaderContext) :
@@ -19,161 +17,63 @@ internal class RocksManga(context: MangaLoaderContext) :
 	override val configKeyDomain = ConfigKey.Domain("rockscans.org")
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 	
-	// تحديث المحددات للموقع
-	override val selectChapter = "ul.main li.wp-manga-chapter, .listing-chapters_wrap .wp-manga-chapter"
+	// المحددات الأساسية
+	override val selectChapter = "ul.main li.wp-manga-chapter, .listing-chapters_wrap .wp-manga-chapter, ul#chapter-list li.chapter-item"
 	override val datePattern = "d MMMM yyyy"
-	override val selectDate = ".chapter-release-date i, .chapter-date"
-	override val selectBodyPage = "div.reading-content, .wp-manga-chapter-img, .page-image, .wp-manga-chapter-img img"
+	override val selectDate = ".chapter-release-date i, .chapter-date, .ch-post-time"
+	override val selectBodyPage = "div.reading-content, .wp-manga-chapter-img, .page-image"
 	override val selectPage = "img"
-	override val selectDesc = ".summary__content, .post-content_item .summary, .description, .summary"
-	override val selectState = ".post-status .post-content_item, .summary-heading:contains(الحالة) + .summary-content"
-	override val selectAlt = ".post-content_item .summary-heading:contains(البديل) + .summary-content"
-	override val selectArtist = ".artist-content a, .post-content_item .summary-heading:contains(الرسام) + .summary-content a"
-	override val selectAuthor = ".author-content a, .post-content_item .summary-heading:contains(المؤلف) + .summary-content a"
-	override val selectTag = ".genres-content a, .post-content_item .summary-heading:contains(النوع) + .summary-content a"
+	override val selectDesc = ".summary__content, .post-content_item .summary, .description, .story"
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
 		super.onCreateConfig(keys)
 		keys.add(userAgentKey)
 	}
 
-	// تحسين قائمة المانجا
-	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
-		val url = buildString {
-			append("https://")
-			append(domain)
-			when {
-				!filter.query.isNullOrEmpty() -> {
-					append("/?s=")
-					append(filter.query.urlEncoded())
-					append("&post_type=wp-manga")
-					if (page > 1) {
-						append("&paged=")
-						append(page)
-					}
-				}
-				filter.tags.isNotEmpty() -> {
-					val tag = filter.tags.oneOrThrowIfMany()
-					append("/manga-genre/")
-					append(tag?.key.orEmpty())
-					append("/")
-					if (page > 1) {
-						append("page/")
-						append(page)
-						append("/")
-					}
-				}
-				else -> {
-					when (order) {
-						SortOrder.POPULARITY -> {
-							append("/manga/")
-							if (page > 1) {
-								append("page/")
-								append(page)
-								append("/")
-							}
-							append("?m_orderby=views")
-						}
-						SortOrder.UPDATED -> {
-							append("/manga/")
-							if (page > 1) {
-								append("page/")
-								append(page)
-								append("/")
-							}
-							append("?m_orderby=latest")
-						}
-						else -> {
-							append("/manga/")
-							if (page > 1) {
-								append("page/")
-								append(page)
-								append("/")
-							}
-						}
-					}
-				}
-			}
-		}
-
-		val doc = webClient.httpGet(url).parseHtml()
-		
-		// محاولة إيجاد المانجا بطرق مختلفة
-		return doc.select(".page-item-detail, .post-title, .c-tabs-item__content, .manga-item").mapNotNull { div ->
-			try {
-				val a = div.selectFirst("a") ?: div.selectFirst("h3 a") ?: div.selectFirst(".post-title a")
-				val href = a?.attrAsRelativeUrlOrNull("href") ?: return@mapNotNull null
-				
-				val img = div.selectFirst("img")
-				val coverUrl = img?.src()?.takeIf { it.isNotBlank() }
-				
-				val title = a.text().takeIf { it.isNotBlank() } 
-					?: img?.attr("alt")?.takeIf { it.isNotBlank() }
-					?: div.selectFirst(".post-title")?.text()
-					?: "بدون عنوان"
-
-				Manga(
-					id = generateUid(href),
-					title = title.trim(),
-					altTitles = emptySet(),
-					url = href,
-					publicUrl = href.toAbsoluteUrl(domain),
-					rating = RATING_UNKNOWN,
-					contentRating = null,
-					coverUrl = coverUrl,
-					tags = emptySet(),
-					state = null,
-					authors = emptySet(),
-					source = source,
-				)
-			} catch (e: Exception) {
-				null
-			}
-		}
-	}
-
-	// تحسين تحميل الفصول
+	// تحميل الفصول مع تحسينات
 	override suspend fun loadChapters(mangaUrl: String, document: Document): List<MangaChapter> {
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
 		
-		// البحث عن الفصول في أماكن مختلفة
+		// البحث عن الفصول بطرق متعددة
 		val chapterElements = document.select(selectChapter).ifEmpty {
-			document.select(".wp-manga-chapter, .chapter-item, .listing-chapters_wrap li, .version-chap li")
+			document.select(".wp-manga-chapter, .chapter-item, .version-chap")
 		}.ifEmpty {
-			document.select("li:has(a[href*=chapter]), .chapter-li")
+			document.select("li:has(a[href*=chapter]), a[href*=chapter]").filter { 
+				it.selectFirst("a")?.attr("href")?.contains("chapter") == true 
+			}
 		}
 		
 		if (chapterElements.isEmpty()) {
-			// محاولة البحث في قائمة الفصول عبر AJAX
-			return loadChaptersFromAjax(mangaUrl, document)
+			// محاولة AJAX كبديل
+			return loadChaptersViaAjax(mangaUrl, document)
 		}
 
 		return chapterElements.mapChapters(reversed = true) { i, element ->
 			val a = element.selectFirst("a") ?: element.takeIf { it.tagName() == "a" }
 			val href = a?.attrAsRelativeUrlOrNull("href") ?: element.parseFailed("رابط الفصل مفقود")
 			
-			// إضافة stylePage إذا لم يكن موجوداً
-			val link = if (href.contains("?style=") || stylePage.isEmpty()) {
+			// التأكد من وجود stylePage
+			val link = if (href.contains("?style=") || stylePage.isBlank()) {
 				href
 			} else {
 				href + stylePage
 			}
 			
 			// البحث عن التاريخ
-			val dateText = element.selectFirst(".chapter-release-date")?.text()
+			val dateText = element.selectFirst("a.c-new-tag")?.attr("title")
 				?: element.selectFirst(selectDate)?.text()
-				?: element.selectFirst("span.chapter-date")?.text()
-				?: a?.selectFirst("span")?.text()
+				?: element.selectFirst(".date, span.date")?.text()
 			
 			// البحث عن اسم الفصل
-			val chapterTitle = a?.text()?.trim()?.takeIf { it.isNotBlank() }
-				?: element.selectFirst(".chapter-title")?.text()
+			val chapterName = a?.selectFirst(".ch-title")?.text()
+				?: a?.ownText()?.trim()?.takeIf { it.isNotBlank() }
+				?: a?.text()?.trim()?.takeIf { it.isNotBlank() }
 				?: "الفصل ${i + 1}"
 
 			MangaChapter(
 				id = generateUid(href),
 				url = link,
-				title = chapterTitle,
+				title = chapterName,
 				number = i + 1f,
 				volume = 0,
 				branch = null,
@@ -184,11 +84,13 @@ internal class RocksManga(context: MangaLoaderContext) :
 		}
 	}
 
-	// تحميل الفصول من AJAX كنسخة احتياطية
-	private suspend fun loadChaptersFromAjax(mangaUrl: String, document: Document): List<MangaChapter> {
+	// تحميل الفصول عبر AJAX
+	private suspend fun loadChaptersViaAjax(mangaUrl: String, document: Document): List<MangaChapter> {
 		return try {
+			// البحث عن معرف المانجا
 			val postId = document.selectFirst("#manga-chapters-holder")?.attr("data-id")
-				?: document.html().substringAfter("\"manga_id\":\"").substringBefore("\"").takeIf { it.isNotBlank() }
+				?: document.selectFirst("input[name=wp-manga-current-id]")?.attr("value")
+				?: extractPostIdFromScript(document)
 				?: return emptyList()
 
 			val ajaxUrl = "https://$domain/wp-admin/admin-ajax.php"
@@ -198,7 +100,9 @@ internal class RocksManga(context: MangaLoaderContext) :
 			))
 
 			val ajaxDoc = response.parseHtml()
-			ajaxDoc.select(".wp-manga-chapter").mapChapters(reversed = true) { i, element ->
+			val chapters = ajaxDoc.select(".wp-manga-chapter, .chapter-item")
+			
+			chapters.mapChapters(reversed = true) { i, element ->
 				val a = element.selectFirst("a") ?: element.parseFailed("رابط الفصل مفقود")
 				val href = a.attrAsRelativeUrlOrNull("href") ?: element.parseFailed("رابط الفصل مفقود")
 				
@@ -219,24 +123,43 @@ internal class RocksManga(context: MangaLoaderContext) :
 		}
 	}
 
+	// استخراج معرف المانجا من الجافا سكريبت
+	private fun extractPostIdFromScript(document: Document): String? {
+		val scripts = document.select("script:not([src])")
+		for (script in scripts) {
+			val content = script.html()
+			if (content.contains("manga_id") || content.contains("post_id")) {
+				val regex = Regex("""["'](?:manga_id|post_id)["']\s*:\s*["']?(\d+)["']?""")
+				val match = regex.find(content)
+				if (match != null) {
+					return match.groupValues[1]
+				}
+			}
+		}
+		return null
+	}
+
 	// تحسين تحميل الصفحات
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 		
-		// البحث عن الصور في أماكن مختلفة
+		// البحث عن الصور
 		val images = doc.select(selectBodyPage).select(selectPage).ifEmpty {
-			doc.select(".wp-manga-chapter-img img, .reading-content img, .page-image img")
+			doc.select(".wp-manga-chapter-img img, .reading-content img")
 		}.ifEmpty {
-			doc.select("div.text-center img, .entry-content img[src*=wp-content]")
+			doc.select("div.text-center img, .entry-content img")
+		}.filter { img ->
+			val src = img.attr("src")
+			src.isNotBlank() && (src.contains("wp-content") || src.contains("uploads") || src.startsWith("http"))
 		}
 
-		return images.mapNotNull { img ->
-			val src = img.src()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+		return images.mapIndexedNotNull { index, img ->
+			val src = img.src()?.takeIf { it.isNotBlank() } ?: return@mapIndexedNotNull null
 			val url = src.toRelativeUrl(domain)
 			
 			MangaPage(
-				id = generateUid(url),
+				id = generateUid("$url-$index"),
 				url = url,
 				preview = null,
 				source = source,
@@ -247,16 +170,15 @@ internal class RocksManga(context: MangaLoaderContext) :
 	// تحسين استخراج تفاصيل المانجا
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
-		
 		val root = doc.body()
 		
 		// استخراج الوصف
 		val description = root.selectFirst(selectDesc)?.html()
-			?: root.selectFirst(".summary")?.html()
-			?: root.selectFirst(".description")?.html()
+			?: root.selectFirst(".summary__content p")?.html()
+			?: root.selectFirst(".post-content_item .summary")?.html()
 		
 		// استخراج التاجات
-		val tags = root.select(selectTag).mapToSet { a ->
+		val tags = root.select(".genres-content a, .post-content_item .summary-heading:contains(النوع) + .summary-content a").mapToSet { a ->
 			MangaTag(
 				key = a.attr("href").substringAfterLast('/').substringBefore('?'),
 				title = a.text().trim(),
@@ -264,8 +186,8 @@ internal class RocksManga(context: MangaLoaderContext) :
 			)
 		}
 		
-		// استخراج المؤلف
-		val authors = root.select(selectAuthor).mapToSet { a ->
+		// استخراج المؤلفين
+		val authors = root.select(".author-content a, .post-content_item .summary-heading:contains(المؤلف) + .summary-content a").mapToSet { a ->
 			MangaTag(
 				key = a.attr("href").substringAfterLast('/').substringBefore('?'),
 				title = a.text().trim(),
@@ -274,7 +196,7 @@ internal class RocksManga(context: MangaLoaderContext) :
 		}
 		
 		// استخراج الحالة
-		val stateText = root.selectFirst(selectState)?.text()?.lowercase()
+		val stateText = root.selectFirst(".post-status .post-content_item, .summary-heading:contains(الحالة) + .summary-content")?.text()?.lowercase(sourceLocale)
 		val state = when {
 			stateText?.contains("مستمر") == true || stateText?.contains("ongoing") == true -> MangaState.ONGOING
 			stateText?.contains("مكتمل") == true || stateText?.contains("completed") == true -> MangaState.FINISHED
@@ -282,20 +204,21 @@ internal class RocksManga(context: MangaLoaderContext) :
 			else -> null
 		}
 
+		// استخراج العناوين البديلة
+		val altTitles = root.selectFirst(".post-content_item .summary-heading:contains(البديل) + .summary-content")
+			?.text()
+			?.split(",", ";")
+			?.mapNotNull { it.trim().takeIf { title -> title.isNotBlank() } }
+			?.toSet()
+			?: emptySet()
+
 		return manga.copy(
 			description = description,
+			altTitles = altTitles,
 			tags = tags,
 			authors = authors,
 			state = state,
 			chapters = loadChapters(manga.url, doc),
-		)
-	}
-
-	override suspend fun getFilterOptions(): MangaListFilterOptions {
-		return MangaListFilterOptions(
-			availableTags = emptySet(), // سيتم تحديثها لاحقاً
-			availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.ABANDONED),
-			availableContentTypes = EnumSet.of(ContentType.MANGA, ContentType.MANHUA, ContentType.MANHWA),
 		)
 	}
 }
