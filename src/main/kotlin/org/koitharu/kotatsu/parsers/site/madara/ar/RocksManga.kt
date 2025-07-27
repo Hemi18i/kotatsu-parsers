@@ -14,22 +14,40 @@ import java.text.SimpleDateFormat
 
 @MangaSourceParser("ROCKSMANGA", "RocksManga", "ar")
 internal class RocksManga(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.ROCKSMANGA, "rocksmanga.com") {
-	override val selectChapter = "ul#chapter-list li.chapter-item"
+	MadaraParser(context, MangaParserSource.ROCKSMANGA, "rockscans.org") {
+
+	override val selectChapter = "ul#chapter-list li.chapter-item, .wp-manga-chapter, .version-chap"
 	override val datePattern = "d MMMM yyyy"
-	override val selectDate = ".ch-post-time"
-	override val selectBodyPage = "div.reading-content"
+	override val selectDate = ".ch-post-time, .chapter-date"
+	override val selectBodyPage = "div.reading-content, .wp-manga-chapter-img, .page-image"
 	override val selectPage = "img"
-	override val selectDesc = ".story"
+	override val selectDesc = ".story, .summary, .description"
 
 	override suspend fun loadChapters(mangaUrl: String, document: Document): List<MangaChapter> {
 		val dateFormat = SimpleDateFormat(datePattern, sourceLocale)
-		return document.select(selectChapter).mapChapters(reversed = true) { i, li ->
-			val a = li.selectFirst("a")
-			val href = a?.attrAsRelativeUrlOrNull("href") ?: li.parseFailed("Link is missing")
+		
+		// محاولة البحث عن الفصول بطرق مختلفة
+		val chapterElements = document.select(selectChapter).ifEmpty {
+			document.select(".wp-manga-chapter, .chapter-item, a[href*=chapter]")
+		}
+		
+		return chapterElements.mapChapters(reversed = true) { i, element ->
+			// البحث عن الرابط
+			val a = element.selectFirst("a") ?: element.takeIf { it.tagName() == "a" }
+			val href = a?.attrAsRelativeUrlOrNull("href") ?: element.parseFailed("Link is missing")
 			val link = href + stylePage
-			val dateText = li.selectFirst("a.c-new-tag")?.attr("title") ?: li.selectFirst(selectDate)?.text()
-			val name = a.selectFirst(".ch-title")?.text() ?: a.ownText()
+			
+			// البحث عن التاريخ
+			val dateText = element.selectFirst("a.c-new-tag")?.attr("title") 
+				?: element.selectFirst(selectDate)?.text()
+				?: element.selectFirst(".date")?.text()
+			
+			// البحث عن اسم الفصل
+			val name = a?.selectFirst(".ch-title")?.text() 
+				?: a?.ownText() 
+				?: a?.text() 
+				?: "الفصل ${i + 1}"
+
 			MangaChapter(
 				id = generateUid(href),
 				url = link,
