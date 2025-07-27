@@ -188,11 +188,7 @@ internal class RocksManga(context: MangaLoaderContext) :
 		
 		// استخراج المؤلفين
 		val authors = root.select(".author-content a, .post-content_item .summary-heading:contains(المؤلف) + .summary-content a").mapToSet { a ->
-			MangaTag(
-				key = a.attr("href").substringAfterLast('/').substringBefore('?'),
-				title = a.text().trim(),
-				source = source,
-			)
+			a.text().trim()
 		}
 		
 		// استخراج الحالة
