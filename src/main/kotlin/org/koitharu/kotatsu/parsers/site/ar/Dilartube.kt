@@ -43,11 +43,6 @@ internal class Dilar(context: MangaLoaderContext) :
 			MangaState.ABANDONED,
 			MangaState.PAUSED
 		),
-		availableContentTypes = EnumSet.of(
-			ContentType.MANGA,
-			ContentType.MANHUA,
-			ContentType.MANHWA,
-		),
 	)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -91,20 +86,7 @@ internal class Dilar(context: MangaLoaderContext) :
 				append("&")
 			}
 			
-			// إضافة نوع المحتوى
-			if (filter.contentTypes.isNotEmpty()) {
-				val contentType = filter.contentTypes.oneOrThrowIfMany()
-				append("type=")
-				append(
-					when (contentType) {
-						ContentType.MANGA -> "manga"
-						ContentType.MANHWA -> "manhwa"
-						ContentType.MANHUA -> "manhua"
-						else -> "manga"
-					}
-				)
-				append("&")
-			}
+			// إضافة نوع المحتوى - تم حذف هذا الجزء لعدم توفر contentTypes في النسخة المستخدمة
 			
 			// إضافة الترتيب
 			append("sort=")
@@ -162,13 +144,7 @@ internal class Dilar(context: MangaLoaderContext) :
 					"hiatus" -> MangaState.PAUSED
 					else -> null
 				},
-				authors = mangaJson.optJSONArray("authors")?.mapJSON { authorJson ->
-					MangaAuthor(
-						name = authorJson.getString("name"),
-						type = MangaAuthor.Type.UNKNOWN,
-						source = source,
-					)
-				}?.toSet() ?: emptySet(),
+				authors = emptySet(), // تم تبسيط هذا الجزء
 				source = source,
 			)
 		}
@@ -234,17 +210,7 @@ internal class Dilar(context: MangaLoaderContext) :
 				"hiatus" -> MangaState.PAUSED
 				else -> manga.state
 			},
-			authors = mangaData.optJSONArray("authors")?.mapJSON { authorJson ->
-				MangaAuthor(
-					name = authorJson.getString("name"),
-					type = when (authorJson.optString("type")) {
-						"author" -> MangaAuthor.Type.WRITER
-						"artist" -> MangaAuthor.Type.ARTIST
-						else -> MangaAuthor.Type.UNKNOWN
-					},
-					source = source,
-				)
-			}?.toSet() ?: manga.authors,
+			authors = emptySet(), // تم تبسيط هذا الجزء
 			chapters = chaptersDeferred.await(),
 		)
 	}
@@ -279,7 +245,11 @@ internal class Dilar(context: MangaLoaderContext) :
 				
 				val dateString = releaseJson.optString("created_at")
 					?: releaseJson.optString("published_at")
-				val uploadDate = dateString?.let { dateFormat.tryParse(it) } ?: 0L
+				val uploadDate = if (dateString?.isNotEmpty() == true) {
+					dateFormat.tryParse(dateString)
+				} else {
+					0L
+				}
 				
 				MangaChapter(
 					id = generateUid(href),
