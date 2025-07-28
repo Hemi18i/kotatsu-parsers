@@ -121,7 +121,14 @@ internal class Dilar(context: MangaLoaderContext) :
 				id = generateUid(href),
 				title = mangaJson.getString("title"),
 				altTitles = mangaJson.optJSONArray("alternative_titles")?.let { altArray ->
-					(0 until altArray.length()).mapTo(mutableSetOf()) { altArray.getString(it) }
+					val titles = mutableSetOf<String>()
+					for (i in 0 until altArray.length()) {
+						val title = altArray.optString(i)
+						if (title.isNotBlank()) {
+							titles.add(title)
+						}
+					}
+					titles
 				} ?: emptySet(),
 				url = href,
 				publicUrl = href.toAbsoluteUrl(domain),
@@ -334,7 +341,7 @@ internal class Dilar(context: MangaLoaderContext) :
 								}
 							}
 							
-							if (fullUrl != null) {
+							if (fullUrl?.isNotEmpty() == true) {
 								MangaPage(
 									id = generateUid(fullUrl),
 									url = fullUrl,
@@ -352,17 +359,22 @@ internal class Dilar(context: MangaLoaderContext) :
 			}
 			
 			// كبديل أخير، البحث عن الصور في HTML
-			doc.select("img[data-src], img[src*='/storage/']").map { img ->
+			val htmlImages = doc.select("img[data-src], img[src*='/storage/']").mapNotNull { img ->
 				val imageUrl = img.attr("data-src").ifEmpty { img.src() }
-				val fullImageUrl = imageUrl.toAbsoluteUrl(domain)
-				
-				MangaPage(
-					id = generateUid(fullImageUrl),
-					url = fullImageUrl,
-					preview = null,
-					source = source,
-				)
-			}.takeIf { it.isNotEmpty() } ?: emptyList()
+				if (imageUrl.isNotBlank()) {
+					val fullImageUrl = imageUrl.toAbsoluteUrl(domain)
+					MangaPage(
+						id = generateUid(fullImageUrl),
+						url = fullImageUrl,
+						preview = null,
+						source = source,
+					)
+				} else {
+					null
+				}
+			}
+			
+			return htmlImages.takeIf { it.isNotEmpty() } ?: emptyList()
 			
 		} catch (e: Exception) {
 			emptyList()
