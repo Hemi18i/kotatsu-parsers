@@ -326,16 +326,25 @@ internal class Dilar(context: MangaLoaderContext) :
 							val fullUrl = if (imageUrl.toString().startsWith("http")) {
 								imageUrl.toString()
 							} else {
-								"https://$domain/storage/${imageUrl.toString().trim('"')}"
+								val cleanUrl = imageUrl.toString().trim('"')
+								if (cleanUrl.isNotEmpty()) {
+									"https://$domain/storage/$cleanUrl"
+								} else {
+									null
+								}
 							}
 							
-							MangaPage(
-								id = generateUid(fullUrl),
-								url = fullUrl,
-								preview = null,
-								source = source,
-							)
-						}
+							if (fullUrl != null) {
+								MangaPage(
+									id = generateUid(fullUrl),
+									url = fullUrl,
+									preview = null,
+									source = source,
+								)
+							} else {
+								null
+							}
+						}.filterNotNull()
 					} catch (e: Exception) {
 						// تجاهل الأخطاء والمحاولة مع العنصر التالي
 					}
