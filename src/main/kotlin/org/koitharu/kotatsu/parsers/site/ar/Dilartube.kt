@@ -249,15 +249,16 @@ internal class DilarTubeParser(context: MangaLoaderContext) : AbstractMangaParse
 				Manga(
 					id = generateUid(url),
 					title = title,
-					altTitles = emptySet(),
+					altTitle = null,
 					url = url.removePrefix("/"),
 					publicUrl = "https://$domain$url",
 					rating = RATING_UNKNOWN,
+					isNsfw = false,
 					coverUrl = coverUrl?.let { if (it.startsWith("http")) it else "https://$domain$it" },
-					description = null,
-					tags = emptySet(),
+					tags = emptySet<MangaTag>(),
 					state = parseState(status),
-					authors = emptySet(),
+					author = null,
+					description = null,
 					chapters = null,
 					source = source,
 				)
@@ -323,22 +324,23 @@ internal class DilarTubeParser(context: MangaLoaderContext) : AbstractMangaParse
 					source = source,
 				)
 			} else null
-		}.toSet()
+		}.toSet<MangaTag>()
 		
 		val chapters = parseHtmlChapters(doc, mangaId)
 		
 		return Manga(
 			id = generateUid(mangaId),
 			title = title,
-			altTitles = emptySet(),
+			altTitle = null,
 			url = mangaId,
 			publicUrl = url,
 			rating = RATING_UNKNOWN,
+			isNsfw = false,
 			coverUrl = coverUrl,
-			description = description,
 			tags = tags,
 			state = parseState(status),
-			authors = if (author != null) setOf(author) else emptySet(),
+			author = author,
+			description = description,
 			chapters = chapters,
 			source = source,
 		)
@@ -474,15 +476,16 @@ internal class DilarTubeParser(context: MangaLoaderContext) : AbstractMangaParse
 		return Manga(
 			id = generateUid(id),
 			title = title.ifEmpty { "عنوان غير معروف" },
-			altTitles = emptySet(),
+			altTitle = null,
 			url = id,
 			publicUrl = "https://$domain/manga/$id",
 			rating = RATING_UNKNOWN,
+			isNsfw = false,
 			coverUrl = if (coverUrl.startsWith("http")) coverUrl else "https://$domain$coverUrl",
-			description = description.ifEmpty { null },
 			tags = tags,
 			state = parseState(status),
-			authors = if (author.isNotEmpty()) setOf(author) else emptySet(),
+			author = if (author.isNotEmpty()) author else null,
+			description = description.ifEmpty { null },
 			chapters = chapters,
 			source = source,
 		)
