@@ -1,10 +1,13 @@
 package org.koitharu.kotatsu.parsers.site.madara.ar
 
-import org.koytharu.kotatsu.parsers.MangaLoaderContext
-import org.koytharu.kotatsu.parsers.MangaSourceParser
-import org.koytharu.kotatsu.parsers.model.MangaParserSource
-import org.koytharu.kotatsu.parsers.site.madara.MadaraParser
+import org.koitharu.kotatsu.parsers.MangaLoaderContext
+import org.koitharu.kotatsu.parsers.MangaSourceParser
+import org.koitharu.kotatsu.parsers.model.MangaParserSource
+import org.koitharu.kotatsu.parsers.site.madara.MadaraParser
 
-@MangaSourceParser("MANGATIMETEST", "MangaTime Test", "ar")
-internal class MangaTimeTest(context: MangaLoaderContext) :
-	MadaraParser(context, MangaParserSource.MANGATIMETEST, "mangatime.org")
+@MangaSourceParser("MANGATIME", "MangaTime", "ar")
+internal class MangaTime(context: MangaLoaderContext) :
+	MadaraParser(context, MangaParserSource.MANGATIME, "mangatime.org") {
+	
+	override val datePattern = "d MMMM، yyyy"
+}
