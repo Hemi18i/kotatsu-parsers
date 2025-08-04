@@ -7,7 +7,7 @@ import org.jsoup.nodes.Element
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
-import org.koitharu.kotatsu.parsers.core.PagedMangaParser
+import org.koitharu.kotatsu.parsers.core.LegacyPagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
@@ -15,8 +15,7 @@ import java.util.*
 
 @MangaSourceParser("TEAMXNOVEL", "TeamXNovel", "ar")
 internal class TeamXNovel(context: MangaLoaderContext) :
-	PagedMangaParser(context, MangaParserSource.TEAMXNOVEL, 10) {
-
+	LegacyPagedMangaParser(context, MangaParserSource.TEAMXNOVEL, 10) {
 	override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.UPDATED, SortOrder.POPULARITY)
 
 	override val configKeyDomain = ConfigKey.Domain("olympustaff.com")
@@ -200,7 +199,7 @@ internal class TeamXNovel(context: MangaLoaderContext) :
 					volume = 0,
 					url = url,
 					scanlator = null,
-					uploadDate = dateFormat.parseSafe(li.selectFirstOrThrow(".epl-date").text()),
+					uploadDate = dateFormat.tryParse(li.selectFirstOrThrow(".epl-date").text()),
 					branch = null,
 					source = source,
 				)
